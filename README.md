@@ -45,6 +45,27 @@ P001,Deep Learning for X,"This paper explores...","deep learning;nlp"
 P002,Survey of Y,"A systematic survey...","survey;healthcare"
 ```
 
+### Convert Scopus Export to Papers CSV
+
+If your source file is a Scopus export, convert it to the pipeline format with:
+
+```bash
+python scripts/convert_scopus_csv.py \
+	--input-csv "/home/fmanzoni-lx/Downloads/scopus_export_May 17-2026_39086f68-fa71-43ad-8ae8-86a29edf2519.csv" \
+	--output-csv data/papers.csv
+```
+
+The converter keeps only these columns from Scopus:
+- `Title`
+- `Abstract`
+- `Author Keywords`
+
+And writes the pipeline-ready schema:
+- `paper_id`
+- `title`
+- `abstract`
+- `keywords`
+
 ### Rules JSON
 
 Supported formats:
