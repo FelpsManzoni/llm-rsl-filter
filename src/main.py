@@ -33,6 +33,7 @@ def main() -> None:
     print(f"- Rules: {len(rules)}")
     print(f"- Batch size: {max(1, config.batch_size)}")
     print(f"- Total batches/model: {batches}")
+    print("- Execution mode: sequential (model 1 round, then model 2 round)")
 
     if config.dry_run:
         print("Dry run completed. No model calls were made.")
@@ -52,6 +53,7 @@ def main() -> None:
     model_1_path = _result_path(config.output_dir, 1)
     model_2_path = _result_path(config.output_dir, 2)
 
+    print("Starting round 1/2 with model 1.")
     model_1_rows = _run_one_model(
         model_name=config.model_1,
         papers=papers,
@@ -61,6 +63,7 @@ def main() -> None:
         resume=config.resume,
         batch_size=config.batch_size,
     )
+    print("Starting round 2/2 with model 2.")
     model_2_rows = _run_one_model(
         model_name=config.model_2,
         papers=papers,

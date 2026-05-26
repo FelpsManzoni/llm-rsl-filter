@@ -4,7 +4,7 @@ Dual-LLM pre-evaluation pipeline for SLR papers using an OpenAI-compatible endpo
 
 The pipeline:
 - Reads papers from CSV (paper id, title, abstract, keywords)
-- Evaluates papers in batches of 20 with two models
+- Evaluates papers in batches of 20 with two models in sequential rounds (never simultaneously)
 - Writes one CSV per model with per-paper decision and matched rule IDs
 - Writes a final consensus CSV applying your precedence rules
 
@@ -97,11 +97,21 @@ pip install -r requirements.txt
 ```bash
 export OPENAI_API_KEY="your_key"
 export VLLM_BASE_URL="http://localhost:8000/v1"
-export MODEL_1="Qwen/qwen3.5:35b-mlx"
-export MODEL_2="Mistralai/mistral-small3.2:24b"
+export MODEL_1="Qwen/Qwen2.5-14B-Instruct"
+export MODEL_2="mistralai/Mistral-Nemo-Instruct-2407"
+export INPUT_CSV="data/papers.csv"
+export RULES_JSON="data/rules.json"
+export OUTPUT_DIR="output"
+export BATCH_SIZE="20"
 ```
 
-3. Run:
+3. Run with env-configured paths:
+
+```bash
+python -m src.main
+```
+
+4. Or override paths explicitly when needed:
 
 ```bash
 python -m src.main \
@@ -124,22 +134,26 @@ Build image:
 docker build -t llm-rsl-filter:latest .
 ```
 
+The image prepares `/work`, `/work/data`, and `/work/output` directories and declares them as volumes.
+
 Run container:
 
 ```bash
 docker run --rm \
-	-e OPENAI_API_KEY="$OPENAI_API_KEY" \
-	-e VLLM_BASE_URL="$VLLM_BASE_URL" \
-	-v "$PWD":/work \
+	--env-file .env \
+	-v "$PWD/data":/work/data \
+	-v "$PWD/output":/work/output \
 	-w /work \
-	llm-rsl-filter:latest \
-	python -m src.main \
-		--input-csv data/papers.csv \
-		--rules-json data/rules.json \
-		--output-dir output
+	llm-rsl-filter:latest
 ```
 
 For RunPod Pods, use the same image and command with your mounted volume paths.
+
+### Model Download During Docker Build
+
+This project container is a client that calls an OpenAI-compatible endpoint (`VLLM_BASE_URL`). It does not host a model server itself, so `docker build` cannot reliably download and register models for that external endpoint.
+
+If you want model weights baked into an image, that must be done in a model-serving image (for example a dedicated vLLM server image), then this client container should point `VLLM_BASE_URL` to that server.
 
 ## Tests
 

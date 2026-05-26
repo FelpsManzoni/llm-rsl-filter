@@ -24,13 +24,33 @@ class RunConfig:
 
 
 def parse_args() -> RunConfig:
+    env_input_csv = os.getenv("INPUT_CSV")
+    env_rules_json = os.getenv("RULES_JSON")
+    env_output_dir = os.getenv("OUTPUT_DIR", "output")
+    env_batch_size = os.getenv("BATCH_SIZE", "20")
+
+    try:
+        batch_size_default = int(env_batch_size)
+    except ValueError as exc:
+        raise ValueError("BATCH_SIZE must be an integer.") from exc
+
     parser = argparse.ArgumentParser(
         description="Dual-LLM pre-evaluation pipeline for SLR papers."
     )
-    parser.add_argument("--input-csv", required=True, help="Input CSV path.")
-    parser.add_argument("--rules-json", required=True, help="Rules JSON path.")
     parser.add_argument(
-        "--output-dir", default="output", help="Directory for generated CSV files."
+        "--input-csv",
+        default=env_input_csv,
+        help="Input CSV path. Defaults to INPUT_CSV env var.",
+    )
+    parser.add_argument(
+        "--rules-json",
+        default=env_rules_json,
+        help="Rules JSON path. Defaults to RULES_JSON env var.",
+    )
+    parser.add_argument(
+        "--output-dir",
+        default=env_output_dir,
+        help="Directory for generated CSV files. Defaults to OUTPUT_DIR env var or 'output'.",
     )
     parser.add_argument(
         "--base-url",
@@ -44,16 +64,19 @@ def parse_args() -> RunConfig:
     )
     parser.add_argument(
         "--model-1",
-        default=os.getenv("MODEL_1", "Qwen/qwen3.5:35b-mlx"),
+        default=os.getenv("MODEL_1", "Qwen/Qwen2.5-14B-Instruct"),
         help="First LLM model ID.",
     )
     parser.add_argument(
         "--model-2",
-        default=os.getenv("MODEL_2", "Mistralai/mistral-small3.2:24b"),
+        default=os.getenv("MODEL_2", "mistralai/Mistral-Nemo-Instruct-2407"),
         help="Second LLM model ID.",
     )
     parser.add_argument(
-        "--batch-size", type=int, default=20, help="Number of papers per batch."
+        "--batch-size",
+        type=int,
+        default=batch_size_default,
+        help="Number of papers per batch. Defaults to BATCH_SIZE env var or 20.",
     )
     parser.add_argument(
         "--timeout-seconds",
@@ -85,6 +108,11 @@ def parse_args() -> RunConfig:
     )
 
     args = parser.parse_args()
+    if not args.input_csv:
+        parser.error("Missing input CSV path. Use --input-csv or set INPUT_CSV.")
+    if not args.rules_json:
+        parser.error("Missing rules JSON path. Use --rules-json or set RULES_JSON.")
+
     api_key = os.getenv(args.api_key_env)
 
     return RunConfig(
