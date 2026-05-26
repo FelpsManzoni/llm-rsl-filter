@@ -48,7 +48,7 @@ wait_for_vllm() {
   start_ts="$(date +%s)"
 
   while true; do
-    if python - "$VLLM_PORT" <<'PY'
+    if python3 - "$VLLM_PORT" <<'PY'
 import json
 import sys
 import urllib.request
@@ -134,7 +134,7 @@ run_model_round() {
     fi
   fi
 
-  VLLM_BASE_URL="${VLLM_BASE_URL}" python -m src.main --run-mode "${run_mode}" ${RESUME_FLAG}
+  VLLM_BASE_URL="${VLLM_BASE_URL}" python3 -m src.main --run-mode "${run_mode}" ${RESUME_FLAG}
   stop_vllm
 }
 
@@ -142,6 +142,6 @@ trap stop_vllm EXIT
 
 run_model_round "model1" "${MODEL_1}" "${MODEL_1_FALLBACK}"
 run_model_round "model2" "${MODEL_2}" "${MODEL_2_FALLBACK}"
-python -m src.main --run-mode merge-only
+python3 -m src.main --run-mode merge-only
 
 echo "Sequential dual-model pipeline completed successfully."

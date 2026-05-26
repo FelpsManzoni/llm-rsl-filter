@@ -16,7 +16,7 @@ ARG PRELOAD_MODELS=true
 WORKDIR /app
 
 COPY requirements.txt /app/requirements.txt
-RUN python -m pip install --no-cache-dir -r /app/requirements.txt
+RUN python3 -m pip install --no-cache-dir -r /app/requirements.txt
 
 COPY src /app/src
 COPY README.md /app/README.md
@@ -34,7 +34,7 @@ RUN if [ "${PRELOAD_MODELS}" = "true" ]; then \
 			MODEL_2_FALLBACK="${MODEL_2_FALLBACK}" \
 			HF_TOKEN="${HF_TOKEN}" \
 			MODEL_CACHE_DIR="${MODEL_CACHE_DIR}" \
-			python /app/docker/prefetch_models.py; \
+			python3 /app/docker/prefetch_models.py; \
 		else \
 			echo "Skipping model prefetch during build (set PRELOAD_MODELS=true to enable)."; \
 		fi
