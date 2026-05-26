@@ -58,7 +58,7 @@
     {
       "rule_id": "EC8",
       "type": "exclusion",
-      "text": "Publications that are short papers and systematic review studies that did not perform an empirical study."
+      "text": "Publications that are short papers that did not perform an empirical study."
     }
   ]
 }
