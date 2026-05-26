@@ -23,6 +23,20 @@ def _result_path(output_dir: Path, model_index: int) -> Path:
 def main() -> None:
     config = parse_args()
 
+    config.output_dir.mkdir(parents=True, exist_ok=True)
+
+    model_1_path = _result_path(config.output_dir, 1)
+    model_2_path = _result_path(config.output_dir, 2)
+
+    if config.run_mode == "merge-only":
+        model_1_rows = read_model_results(model_1_path)
+        model_2_rows = read_model_results(model_2_path)
+        _write_final_results(config.output_dir, model_1_rows, model_2_rows)
+        print(f"Model 1 CSV: {model_1_path}")
+        print(f"Model 2 CSV: {model_2_path}")
+        print(f"Final CSV: {config.output_dir / 'results_final.csv'}")
+        return
+
     papers = load_papers(config.input_csv, max_papers=config.max_papers)
     rules = load_rules(config.rules_json)
 
@@ -34,6 +48,7 @@ def main() -> None:
     print(f"- Batch size: {max(1, config.batch_size)}")
     print(f"- Total batches/model: {batches}")
     print("- Execution mode: sequential (model 1 round, then model 2 round)")
+    print(f"- Run mode: {config.run_mode}")
 
     if config.dry_run:
         print("Dry run completed. No model calls were made.")
@@ -48,39 +63,52 @@ def main() -> None:
         )
     )
 
-    config.output_dir.mkdir(parents=True, exist_ok=True)
+    model_1_rows: list[ModelDecision] | None = None
+    model_2_rows: list[ModelDecision] | None = None
 
-    model_1_path = _result_path(config.output_dir, 1)
-    model_2_path = _result_path(config.output_dir, 2)
+    if config.run_mode in {"full", "model1"}:
+        print("Starting round 1/2 with model 1.")
+        model_1_rows = _run_one_model(
+            model_name=config.model_1,
+            papers=papers,
+            rules=rules,
+            client=client,
+            output_path=model_1_path,
+            resume=config.resume,
+            batch_size=config.batch_size,
+        )
 
-    print("Starting round 1/2 with model 1.")
-    model_1_rows = _run_one_model(
-        model_name=config.model_1,
-        papers=papers,
-        rules=rules,
-        client=client,
-        output_path=model_1_path,
-        resume=config.resume,
-        batch_size=config.batch_size,
-    )
-    print("Starting round 2/2 with model 2.")
-    model_2_rows = _run_one_model(
-        model_name=config.model_2,
-        papers=papers,
-        rules=rules,
-        client=client,
-        output_path=model_2_path,
-        resume=config.resume,
-        batch_size=config.batch_size,
-    )
+    if config.run_mode in {"full", "model2"}:
+        print("Starting round 2/2 with model 2.")
+        model_2_rows = _run_one_model(
+            model_name=config.model_2,
+            papers=papers,
+            rules=rules,
+            client=client,
+            output_path=model_2_path,
+            resume=config.resume,
+            batch_size=config.batch_size,
+        )
 
-    final_rows = build_final_decisions(model_1_rows, model_2_rows)
-    final_path = config.output_dir / "results_final.csv"
-    write_final_results(final_path, final_rows)
+    if config.run_mode == "full":
+        model_1_rows = model_1_rows if model_1_rows is not None else read_model_results(model_1_path)
+        model_2_rows = model_2_rows if model_2_rows is not None else read_model_results(model_2_path)
+        _write_final_results(config.output_dir, model_1_rows, model_2_rows)
 
     print(f"Model 1 CSV: {model_1_path}")
     print(f"Model 2 CSV: {model_2_path}")
-    print(f"Final CSV: {final_path}")
+    if config.run_mode in {"full", "merge-only"}:
+        print(f"Final CSV: {config.output_dir / 'results_final.csv'}")
+
+
+def _write_final_results(
+    output_dir: Path,
+    model_1_rows: list[ModelDecision],
+    model_2_rows: list[ModelDecision],
+) -> None:
+    final_rows = build_final_decisions(model_1_rows, model_2_rows)
+    final_path = output_dir / "results_final.csv"
+    write_final_results(final_path, final_rows)
 
 
 def _run_one_model(
