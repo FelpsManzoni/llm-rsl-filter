@@ -4,6 +4,10 @@ import argparse
 import os
 from dataclasses import dataclass
 from pathlib import Path
+from typing import Literal
+
+
+RunMode = Literal["full", "model1", "model2", "merge-only"]
 
 
 @dataclass(frozen=True)
@@ -21,6 +25,7 @@ class RunConfig:
     max_papers: int | None
     resume: bool
     dry_run: bool
+    run_mode: RunMode
 
 
 def parse_args() -> RunConfig:
@@ -106,18 +111,27 @@ def parse_args() -> RunConfig:
         action="store_true",
         help="Validate inputs and planned execution without calling LLMs.",
     )
+    parser.add_argument(
+        "--run-mode",
+        choices=["full", "model1", "model2", "merge-only"],
+        default=os.getenv("RUN_MODE", "full"),
+        help="Pipeline run mode: full, model1, model2, or merge-only.",
+    )
 
     args = parser.parse_args()
-    if not args.input_csv:
+    run_mode: RunMode = args.run_mode
+
+    needs_input_files = run_mode in {"full", "model1", "model2"}
+    if needs_input_files and not args.input_csv:
         parser.error("Missing input CSV path. Use --input-csv or set INPUT_CSV.")
-    if not args.rules_json:
+    if needs_input_files and not args.rules_json:
         parser.error("Missing rules JSON path. Use --rules-json or set RULES_JSON.")
 
     api_key = os.getenv(args.api_key_env)
 
     return RunConfig(
-        input_csv=Path(args.input_csv),
-        rules_json=Path(args.rules_json),
+        input_csv=Path(args.input_csv or ""),
+        rules_json=Path(args.rules_json or ""),
         output_dir=Path(args.output_dir),
         base_url=args.base_url,
         api_key=api_key,
@@ -129,4 +143,5 @@ def parse_args() -> RunConfig:
         max_papers=args.max_papers,
         resume=args.resume,
         dry_run=args.dry_run,
+        run_mode=run_mode,
     )

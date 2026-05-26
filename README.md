@@ -1,6 +1,12 @@
 # llm-rsl-filter
 
-Dual-LLM pre-evaluation pipeline for SLR papers using an OpenAI-compatible endpoint (for example, vLLM on RunPod).
+Dual-LLM pre-evaluation pipeline for SLR papers.
+
+This repository now supports an all-in-one Docker workflow where the same container:
+- Hosts local vLLM for one model at a time.
+- Runs model 1 evaluation round.
+- Restarts local vLLM for model 2 evaluation round.
+- Produces per-model outputs and final consensus output.
 
 The pipeline:
 - Reads papers from CSV (paper id, title, abstract, keywords)
@@ -92,11 +98,10 @@ Final CSV includes:
 pip install -r requirements.txt
 ```
 
-2. Set environment variables (or use `.env` with your preferred loader):
+2. Set environment variables (or use .env with your preferred loader):
 
 ```bash
 export OPENAI_API_KEY="your_key"
-export VLLM_BASE_URL="http://localhost:8000/v1"
 export MODEL_1="Qwen/Qwen2.5-14B-Instruct"
 export MODEL_2="mistralai/Mistral-Nemo-Instruct-2407"
 export INPUT_CSV="data/papers.csv"
@@ -105,7 +110,7 @@ export OUTPUT_DIR="output"
 export BATCH_SIZE="20"
 ```
 
-3. Run with env-configured paths:
+3. If you already run your own endpoint, run with env-configured paths:
 
 ```bash
 python -m src.main
@@ -131,32 +136,58 @@ Useful flags:
 Build image:
 
 ```bash
-docker build -t llm-rsl-filter:latest .
+docker build \
+  --build-arg PRELOAD_MODELS=true \
+  --build-arg MODEL_1="Qwen/Qwen2.5-14B-Instruct" \
+  --build-arg MODEL_2="mistralai/Mistral-Nemo-Instruct-2407" \
+  -t llm-rsl-filter:latest .
 ```
 
-The image prepares `/work`, `/work/data`, and `/work/output` directories and declares them as volumes.
+Optional build args:
+- HF_TOKEN: Hugging Face token for private/gated model repos.
+- MODEL_1_FALLBACK, MODEL_2_FALLBACK: optional lower-memory fallback models used when VLLM_PRECISION_POLICY=auto.
+- PRELOAD_MODELS=false: skip model prefetch at build time.
+
+The image prepares /work, /work/data, /work/output, and /models-cache.
 
 Run container:
 
 ```bash
+mkdir -p data output
+
 docker run --rm \
+	--gpus all \
 	--env-file .env \
 	-v "$PWD/data":/work/data \
 	-v "$PWD/output":/work/output \
+	-v "$PWD/models-cache":/models-cache \
 	-w /work \
 	llm-rsl-filter:latest
 ```
 
-For RunPod Pods, use the same image and command with your mounted volume paths.
+Inside the container execution, the entrypoint performs:
+1. Start local vLLM for MODEL_1.
+2. Run model 1 evaluation round.
+3. Stop local vLLM.
+4. Start local vLLM for MODEL_2.
+5. Run model 2 evaluation round.
+6. Merge outputs into results_final.csv.
 
-### Model Download During Docker Build
+Outputs:
+- output/results_model_1.csv
+- output/results_model_2.csv
+- output/results_final.csv
 
-This project container is a client that calls an OpenAI-compatible endpoint (`VLLM_BASE_URL`). It does not host a model server itself, so `docker build` cannot reliably download and register models for that external endpoint.
+For RunPod pods, clone repo, build image, and run this same command in the pod.
 
-If you want model weights baked into an image, that must be done in a model-serving image (for example a dedicated vLLM server image), then this client container should point `VLLM_BASE_URL` to that server.
+### Notes About GPU Fit and Fallback
+
+If MODEL_1 or MODEL_2 fail to start due to memory pressure and VLLM_PRECISION_POLICY=auto, the container tries MODEL_1_FALLBACK and MODEL_2_FALLBACK with VLLM_FALLBACK_QUANTIZATION.
+
+Set fallback models in .env if you want automatic recovery behavior.
 
 ## Tests
 
 ```bash
-pytest
+PYTEST_DISABLE_PLUGIN_AUTOLOAD=1 pytest
 ```
