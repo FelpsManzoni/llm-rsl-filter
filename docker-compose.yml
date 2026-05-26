@@ -1,0 +1,20 @@
+services:
+  llm-rsl-filter:
+    build:
+      context: .
+      args:
+        PRELOAD_MODELS: ${PRELOAD_MODELS:-true}
+        MODEL_1: ${MODEL_1:-Qwen/Qwen2.5-14B-Instruct}
+        MODEL_2: ${MODEL_2:-mistralai/Mistral-Nemo-Instruct-2407}
+        MODEL_1_FALLBACK: ${MODEL_1_FALLBACK:-}
+        MODEL_2_FALLBACK: ${MODEL_2_FALLBACK:-}
+        HF_TOKEN: ${HF_TOKEN:-}
+    image: llm-rsl-filter:latest
+    env_file:
+      - ${ENV_FILE:-.env}
+    working_dir: /work
+    gpus: all
+    volumes:
+      - ${HOST_DATA_DIR:-./data}:/work/data
+      - ${HOST_OUTPUT_DIR:-./output}:/work/output
+      - ${HOST_MODELS_CACHE_DIR:-./models-cache}:/models-cache

@@ -133,14 +133,36 @@ Useful flags:
 
 ## Docker / RunPod
 
+Recommended (no long args):
+
+1. Copy .env.example to .env and adjust paths/model values as needed.
+2. Build:
+
+```bash
+docker compose build
+```
+
+3. Run:
+
+```bash
+docker compose run --rm llm-rsl-filter
+```
+
+Optional bootstrap without creating .env first:
+
+```bash
+ENV_FILE=.env.example docker compose build
+ENV_FILE=.env.example docker compose run --rm llm-rsl-filter
+```
+
+This avoids passing build args, volume mounts, and working directory flags manually.
+
+Direct Docker (still supported):
+
 Build image:
 
 ```bash
-docker build \
-  --build-arg PRELOAD_MODELS=true \
-  --build-arg MODEL_1="Qwen/Qwen2.5-14B-Instruct" \
-  --build-arg MODEL_2="mistralai/Mistral-Nemo-Instruct-2407" \
-  -t llm-rsl-filter:latest .
+docker build -t llm-rsl-filter:latest .
 ```
 
 Optional build args:

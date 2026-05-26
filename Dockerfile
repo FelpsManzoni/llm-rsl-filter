@@ -6,8 +6,8 @@ ENV APP_DIR=/app
 ENV WORK_DIR=/work
 ENV MODEL_CACHE_DIR=/models-cache
 
-ARG MODEL_1=
-ARG MODEL_2=
+ARG MODEL_1=Qwen/Qwen2.5-14B-Instruct
+ARG MODEL_2=mistralai/Mistral-Nemo-Instruct-2407
 ARG MODEL_1_FALLBACK=
 ARG MODEL_2_FALLBACK=
 ARG HF_TOKEN=
@@ -27,7 +27,7 @@ RUN chmod +x /app/docker/entrypoint.sh
 
 RUN mkdir -p /work /work/data /work/output "${MODEL_CACHE_DIR}"
 
-RUN if [ "${PRELOAD_MODELS}" = "true" ] && [ -n "${MODEL_1}" ] && [ -n "${MODEL_2}" ]; then \
+RUN if [ "${PRELOAD_MODELS}" = "true" ]; then \
 			MODEL_1="${MODEL_1}" \
 			MODEL_2="${MODEL_2}" \
 			MODEL_1_FALLBACK="${MODEL_1_FALLBACK}" \
@@ -36,7 +36,7 @@ RUN if [ "${PRELOAD_MODELS}" = "true" ] && [ -n "${MODEL_1}" ] && [ -n "${MODEL_
 			MODEL_CACHE_DIR="${MODEL_CACHE_DIR}" \
 			python /app/docker/prefetch_models.py; \
 		else \
-			echo "Skipping model prefetch during build (set PRELOAD_MODELS=true and pass MODEL_1/MODEL_2 build args)."; \
+			echo "Skipping model prefetch during build (set PRELOAD_MODELS=true to enable)."; \
 		fi
 
 VOLUME ["/work", "/work/data", "/work/output", "/models-cache"]
