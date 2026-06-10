@@ -18,8 +18,8 @@ The pipeline:
 
 Per model decision:
 - If any exclusion rule is matched: `exclude`
-- Else if inclusion rules are matched and no exclusion: `include`
 - Else if insufficient information: `manual review`
+- Else if inclusion rules are matched: `include`
 - Else: `manual review`
 
 Final consensus decision:
