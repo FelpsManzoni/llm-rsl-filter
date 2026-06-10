@@ -7,5 +7,6 @@ __pycache__
 *.pyd
 .env
 output
+models
 models-cache
 data

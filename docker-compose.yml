@@ -3,7 +3,7 @@ services:
     build:
       context: .
       args:
-        PRELOAD_MODELS: ${PRELOAD_MODELS:-true}
+        PRELOAD_MODELS: ${PRELOAD_MODELS:-false}
         MODEL_1: ${MODEL_1:-Qwen/Qwen2.5-14B-Instruct}
         MODEL_2: ${MODEL_2:-mistralai/Mistral-Nemo-Instruct-2407}
         MODEL_1_FALLBACK: ${MODEL_1_FALLBACK:-}
@@ -17,4 +17,5 @@ services:
     volumes:
       - ${HOST_DATA_DIR:-./data}:/work/data
       - ${HOST_OUTPUT_DIR:-./output}:/work/output
+      - ${HOST_MODEL_STORE_DIR:-./models}:/models
       - ${HOST_MODELS_CACHE_DIR:-./models-cache}:/models-cache

@@ -6,6 +6,13 @@ MODEL_2="${MODEL_2:-}"
 MODEL_1_FALLBACK="${MODEL_1_FALLBACK:-}"
 MODEL_2_FALLBACK="${MODEL_2_FALLBACK:-}"
 MODEL_CACHE_DIR="${MODEL_CACHE_DIR:-/models-cache}"
+MODEL_STORE_DIR="${MODEL_STORE_DIR:-/models}"
+MODEL_1_PATH="${MODEL_1_PATH:-}"
+MODEL_2_PATH="${MODEL_2_PATH:-}"
+MODEL_1_FALLBACK_PATH="${MODEL_1_FALLBACK_PATH:-}"
+MODEL_2_FALLBACK_PATH="${MODEL_2_FALLBACK_PATH:-}"
+LOCAL_ONLY="${LOCAL_ONLY:-true}"
+CONTAINER_TASK="${CONTAINER_TASK:-evaluate}"
 VLLM_HOST="${VLLM_HOST:-0.0.0.0}"
 VLLM_PORT="${VLLM_PORT:-8000}"
 VLLM_STARTUP_TIMEOUT="${VLLM_STARTUP_TIMEOUT:-600}"
@@ -38,9 +45,68 @@ if [[ -z "${INPUT_CSV}" || -z "${RULES_JSON}" ]]; then
   exit 1
 fi
 
-mkdir -p /work /work/data /work/output "${MODEL_CACHE_DIR}" "${OUTPUT_DIR}"
+mkdir -p /work /work/data /work/output "${MODEL_CACHE_DIR}" "${MODEL_STORE_DIR}" "${OUTPUT_DIR}"
+
+if [[ "${CONTAINER_TASK}" == "prefetch" ]]; then
+  python3 /app/docker/prefetch_models.py
+  exit 0
+fi
+
+if [[ "${CONTAINER_TASK}" != "evaluate" ]]; then
+  echo "Unsupported CONTAINER_TASK=${CONTAINER_TASK}. Expected 'evaluate' or 'prefetch'." >&2
+  exit 1
+fi
+
+if [[ "${LOCAL_ONLY}" == "true" ]]; then
+  export HF_HUB_OFFLINE=1
+  export TRANSFORMERS_OFFLINE=1
+  export HF_DATASETS_OFFLINE=1
+fi
 
 VLLM_PID=""
+
+safe_model_dir_name() {
+  local model_id="$1"
+  echo "${model_id//\//__}"
+}
+
+resolve_model_path() {
+  local model_id="$1"
+  local explicit_path="$2"
+
+  if [[ -n "${explicit_path}" ]]; then
+    echo "${explicit_path}"
+    return 0
+  fi
+
+  if [[ "${model_id}" == /* || "${model_id}" == ./* || "${model_id}" == ../* ]]; then
+    echo "${model_id}"
+    return 0
+  fi
+
+  echo "${MODEL_STORE_DIR}/$(safe_model_dir_name "${model_id}")"
+}
+
+validate_local_model_path() {
+  local model_id="$1"
+  local model_path="$2"
+
+  if [[ "${LOCAL_ONLY}" != "true" ]]; then
+    return 0
+  fi
+
+  if [[ ! -d "${model_path}" ]]; then
+    echo "Local-only mode is enabled, but model files for ${model_id} were not found at ${model_path}." >&2
+    echo "Run: docker compose run --rm -e CONTAINER_TASK=prefetch -e LOCAL_ONLY=false llm-rsl-filter" >&2
+    return 1
+  fi
+
+  if [[ ! -f "${model_path}/config.json" ]]; then
+    echo "Local-only mode is enabled, but ${model_path} does not look like a complete Hugging Face model directory." >&2
+    echo "Missing required file: ${model_path}/config.json" >&2
+    return 1
+  fi
+}
 
 wait_for_vllm() {
   local timeout_seconds="$1"
@@ -89,12 +155,20 @@ stop_vllm() {
 start_vllm() {
   local model_id="$1"
   local quantization="$2"
+  local model_path="$3"
+  local serve_target="${model_id}"
+
+  if [[ "${LOCAL_ONLY}" == "true" ]]; then
+    validate_local_model_path "${model_id}" "${model_path}"
+    serve_target="${model_path}"
+  fi
 
   local cmd=(
-    vllm serve "${model_id}"
+    vllm serve "${serve_target}"
     --host "${VLLM_HOST}"
     --port "${VLLM_PORT}"
     --download-dir "${MODEL_CACHE_DIR}"
+    --served-model-name "${model_id}"
     --gpu-memory-utilization "${VLLM_GPU_MEMORY_UTILIZATION}"
     --max-model-len "${VLLM_MAX_MODEL_LEN}"
     --dtype "${VLLM_DTYPE}"
@@ -123,25 +197,40 @@ run_model_round() {
   local run_mode="$1"
   local primary_model="$2"
   local fallback_model="$3"
+  local primary_model_path="$4"
+  local fallback_model_path="$5"
+  local active_model="${primary_model}"
+  local active_model_path
+  local model_arg_name
 
-  if ! start_vllm "${primary_model}" ""; then
+  active_model_path="$(resolve_model_path "${primary_model}" "${primary_model_path}")"
+
+  if ! start_vllm "${primary_model}" "" "${active_model_path}"; then
     if [[ "${VLLM_PRECISION_POLICY}" == "auto" ]] && [[ -n "${fallback_model}" ]]; then
       echo "Retrying with fallback model ${fallback_model} and quantization ${VLLM_FALLBACK_QUANTIZATION}."
-      start_vllm "${fallback_model}" "${VLLM_FALLBACK_QUANTIZATION}"
+      active_model="${fallback_model}"
+      active_model_path="$(resolve_model_path "${fallback_model}" "${fallback_model_path}")"
+      start_vllm "${fallback_model}" "${VLLM_FALLBACK_QUANTIZATION}" "${active_model_path}"
     else
       echo "No fallback configured for model ${primary_model}; aborting." >&2
       return 1
     fi
   fi
 
-  VLLM_BASE_URL="${VLLM_BASE_URL}" python3 -m src.main --run-mode "${run_mode}" ${RESUME_FLAG}
+  if [[ "${run_mode}" == "model1" ]]; then
+    model_arg_name="--model-1"
+  else
+    model_arg_name="--model-2"
+  fi
+
+  VLLM_BASE_URL="${VLLM_BASE_URL}" python3 -m src.main --run-mode "${run_mode}" "${model_arg_name}" "${active_model}" ${RESUME_FLAG}
   stop_vllm
 }
 
 trap stop_vllm EXIT
 
-run_model_round "model1" "${MODEL_1}" "${MODEL_1_FALLBACK}"
-run_model_round "model2" "${MODEL_2}" "${MODEL_2_FALLBACK}"
+run_model_round "model1" "${MODEL_1}" "${MODEL_1_FALLBACK}" "${MODEL_1_PATH}" "${MODEL_1_FALLBACK_PATH}"
+run_model_round "model2" "${MODEL_2}" "${MODEL_2_FALLBACK}" "${MODEL_2_PATH}" "${MODEL_2_FALLBACK_PATH}"
 python3 -m src.main --run-mode merge-only
 
 echo "Sequential dual-model pipeline completed successfully."

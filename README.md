@@ -169,6 +169,40 @@ docker compose build
 docker compose run --rm llm-rsl-filter
 ```
 
+### Local-Only Model Workflow
+
+The runtime is local-only by default. It expects model files under `./models`,
+mounted into the container at `/models`. Use one networked prefetch step to
+populate the local model store, then run evaluation offline.
+
+Build the image without downloading model weights into image layers:
+
+```bash
+docker compose build
+```
+
+Prefetch configured models into `./models`:
+
+```bash
+docker compose run --rm \
+	-e CONTAINER_TASK=prefetch \
+	-e LOCAL_ONLY=false \
+	llm-rsl-filter
+```
+
+Run evaluation using only local model files:
+
+```bash
+docker compose run --rm llm-rsl-filter
+```
+
+Expected local model paths:
+- `./models/Qwen__Qwen2.5-14B-Instruct`
+- `./models/mistralai__Mistral-Nemo-Instruct-2407`
+
+To use a custom local model directory, set `MODEL_1_PATH` or `MODEL_2_PATH`
+to the mounted container path, for example `/models/my-model`.
+
 Optional bootstrap without creating .env first:
 
 ```bash
