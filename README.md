@@ -184,7 +184,7 @@ storage in addition to the local model directory.
 Build the image without downloading model weights into image layers:
 
 ```bash
-docker compose build
+docker compose build --progress=plain
 ```
 
 Prefetch configured models into `./models`:
@@ -201,6 +201,11 @@ Run evaluation using only local model files:
 ```bash
 docker compose run --rm llm-rsl-filter
 ```
+
+Progress/logging controls:
+- `VLLM_STREAM_LOGS=true`: stream vLLM startup logs while waiting for readiness.
+- `EVAL_PROGRESS=true`: show per-batch paper evaluation progress bars.
+- `docker compose build --progress=plain`: show readable Docker build steps.
 
 Expected local model paths:
 - `./models/Qwen__Qwen2.5-14B-Instruct`

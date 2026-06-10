@@ -5,6 +5,11 @@ from pathlib import Path
 
 from huggingface_hub import snapshot_download
 
+try:
+    from tqdm.auto import tqdm
+except ImportError:  # pragma: no cover - dependency is installed in the image.
+    tqdm = None
+
 
 INFERENCE_FILE_PATTERNS = [
     "*.safetensors",
@@ -54,6 +59,13 @@ def _looks_like_path(value: str) -> bool:
     return value.startswith("/") or value.startswith(".")
 
 
+def _progress_models(models: list[str]):
+    if tqdm is not None:
+        yield from tqdm(models, desc="Prefetch models", unit="model")
+        return
+    yield from models
+
+
 def main() -> int:
     model_cache_dir = (os.getenv("MODEL_CACHE_DIR") or "/models-cache").strip()
     model_store_dir = (os.getenv("MODEL_STORE_DIR") or "/models").strip()
@@ -72,7 +84,7 @@ def main() -> int:
     print(f"Prefetching {len(models)} model(s) into {model_store_dir}.")
     print("Weight policy: safetensors only.")
     print(f"HF cache enabled: {use_hf_cache}.")
-    for model_id in models:
+    for model_id in _progress_models(models):
         if _looks_like_path(model_id):
             print(f"Skipping local model path: {model_id}")
             continue
