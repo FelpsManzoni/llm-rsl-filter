@@ -175,6 +175,12 @@ The runtime is local-only by default. It expects model files under `./models`,
 mounted into the container at `/models`. Use one networked prefetch step to
 populate the local model store, then run evaluation offline.
 
+Prefetch downloads model files directly into `./models` by default. Weight
+files are restricted to `*.safetensors`; non-weight files required by vLLM,
+such as `config.json` and tokenizer files, are also downloaded. Set
+`PREFETCH_USE_HF_CACHE=true` only if you intentionally want Hugging Face cache
+storage in addition to the local model directory.
+
 Build the image without downloading model weights into image layers:
 
 ```bash
