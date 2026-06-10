@@ -22,6 +22,7 @@ VLLM_DTYPE="${VLLM_DTYPE:-bfloat16}"
 VLLM_PRECISION_POLICY="${VLLM_PRECISION_POLICY:-auto}"
 VLLM_FALLBACK_QUANTIZATION="${VLLM_FALLBACK_QUANTIZATION:-awq}"
 VLLM_BASE_URL="${VLLM_BASE_URL:-http://127.0.0.1:${VLLM_PORT}/v1}"
+VLLM_STREAM_LOGS="${VLLM_STREAM_LOGS:-true}"
 
 INPUT_CSV="${INPUT_CSV:-}"
 RULES_JSON="${RULES_JSON:-}"
@@ -64,6 +65,7 @@ if [[ "${LOCAL_ONLY}" == "true" ]]; then
 fi
 
 VLLM_PID=""
+VLLM_LOG_TAIL_PID=""
 
 safe_model_dir_name() {
   local model_id="$1"
@@ -145,6 +147,12 @@ PY
 }
 
 stop_vllm() {
+  if [[ -n "${VLLM_LOG_TAIL_PID}" ]] && kill -0 "${VLLM_LOG_TAIL_PID}" 2>/dev/null; then
+    kill "${VLLM_LOG_TAIL_PID}" || true
+    wait "${VLLM_LOG_TAIL_PID}" || true
+  fi
+  VLLM_LOG_TAIL_PID=""
+
   if [[ -n "${VLLM_PID}" ]] && kill -0 "${VLLM_PID}" 2>/dev/null; then
     kill "${VLLM_PID}" || true
     wait "${VLLM_PID}" || true
@@ -179,10 +187,21 @@ start_vllm() {
   fi
 
   echo "Starting vLLM server for model ${model_id}."
+  : > /tmp/vllm.log
   "${cmd[@]}" >/tmp/vllm.log 2>&1 &
   VLLM_PID="$!"
 
+  if [[ "${VLLM_STREAM_LOGS}" == "true" ]]; then
+    tail -n +1 -F /tmp/vllm.log &
+    VLLM_LOG_TAIL_PID="$!"
+  fi
+
   if wait_for_vllm "${VLLM_STARTUP_TIMEOUT}"; then
+    if [[ -n "${VLLM_LOG_TAIL_PID}" ]] && kill -0 "${VLLM_LOG_TAIL_PID}" 2>/dev/null; then
+      kill "${VLLM_LOG_TAIL_PID}" || true
+      wait "${VLLM_LOG_TAIL_PID}" || true
+      VLLM_LOG_TAIL_PID=""
+    fi
     echo "vLLM server is ready for model ${model_id}."
     return 0
   fi
