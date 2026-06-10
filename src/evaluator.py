@@ -1,8 +1,19 @@
 from __future__ import annotations
 
+import os
+from collections.abc import Iterable, Iterator
+from typing import TypeVar
+
 from .llm_client import LLMClient
 from .models import Decision, LLMRawDecision, ModelDecision, Paper, Rule
 from .prompts import SYSTEM_PROMPT, build_user_prompt
+
+try:
+    from tqdm.auto import tqdm
+except ImportError:  # pragma: no cover - dependency is optional for library use.
+    tqdm = None
+
+T = TypeVar("T")
 
 
 def evaluate_model(
@@ -13,15 +24,24 @@ def evaluate_model(
     batch_size: int = 20,
 ) -> list[ModelDecision]:
     out: list[ModelDecision] = []
+    progress_enabled = os.getenv("EVAL_PROGRESS", "true").lower() == "true"
+    normalized_batch_size = max(1, batch_size)
+    total_batches = (len(papers) + normalized_batch_size - 1) // normalized_batch_size
 
-    for batch_start in range(0, len(papers), max(1, batch_size)):
-        batch = papers[batch_start : batch_start + max(1, batch_size)]
-        print(
-            f"[{model_name}] Processing batch {batch_start // max(1, batch_size) + 1} "
-            f"with {len(batch)} paper(s)."
+    for batch_start in range(0, len(papers), normalized_batch_size):
+        batch = papers[batch_start : batch_start + normalized_batch_size]
+        batch_number = batch_start // normalized_batch_size + 1
+        _progress_log(
+            f"[{model_name}] Batch {batch_number}/{total_batches}: "
+            f"{len(batch)} paper(s)."
         )
 
-        for paper in batch:
+        for paper in _progress_iter(
+            batch,
+            enabled=progress_enabled,
+            desc=f"{model_name} batch {batch_number}/{total_batches}",
+            unit="paper",
+        ):
             user_prompt = build_user_prompt(paper, rules)
             try:
                 response = client.evaluate(
@@ -48,6 +68,25 @@ def evaluate_model(
                 )
 
     return out
+
+
+def _progress_iter(
+    values: Iterable[T],
+    enabled: bool,
+    desc: str,
+    unit: str,
+) -> Iterator[T]:
+    if enabled and tqdm is not None:
+        yield from tqdm(values, desc=desc, unit=unit, leave=False)
+        return
+    yield from values
+
+
+def _progress_log(message: str) -> None:
+    if tqdm is not None:
+        tqdm.write(message)
+    else:
+        print(message)
 
 
 def derive_decision(raw: LLMRawDecision) -> Decision:

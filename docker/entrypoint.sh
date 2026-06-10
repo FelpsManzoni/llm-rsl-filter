@@ -22,6 +22,7 @@ VLLM_DTYPE="${VLLM_DTYPE:-bfloat16}"
 VLLM_PRECISION_POLICY="${VLLM_PRECISION_POLICY:-auto}"
 VLLM_FALLBACK_QUANTIZATION="${VLLM_FALLBACK_QUANTIZATION:-awq}"
 VLLM_BASE_URL="${VLLM_BASE_URL:-http://127.0.0.1:${VLLM_PORT}/v1}"
+VLLM_STREAM_LOGS="${VLLM_STREAM_LOGS:-true}"
 
 INPUT_CSV="${INPUT_CSV:-}"
 RULES_JSON="${RULES_JSON:-}"
@@ -30,6 +31,14 @@ RESUME_FLAG=""
 if [[ "${RESUME:-false}" == "true" ]]; then
   RESUME_FLAG="--resume"
 fi
+
+log() {
+  printf '[%s] %s\n' "$(date '+%Y-%m-%d %H:%M:%S')" "$*"
+}
+
+section() {
+  printf '\n[%s] ==== %s ====\n' "$(date '+%Y-%m-%d %H:%M:%S')" "$*"
+}
 
 if [[ -z "${OPENAI_API_KEY:-}" ]]; then
   export OPENAI_API_KEY="dummy"
@@ -48,7 +57,9 @@ fi
 mkdir -p /work /work/data /work/output "${MODEL_CACHE_DIR}" "${MODEL_STORE_DIR}" "${OUTPUT_DIR}"
 
 if [[ "${CONTAINER_TASK}" == "prefetch" ]]; then
+  section "Prefetch Models"
   python3 /app/docker/prefetch_models.py
+  log "Prefetch task completed."
   exit 0
 fi
 
@@ -58,12 +69,16 @@ if [[ "${CONTAINER_TASK}" != "evaluate" ]]; then
 fi
 
 if [[ "${LOCAL_ONLY}" == "true" ]]; then
+  log "Local-only mode enabled; Hugging Face and Transformers offline flags are set."
   export HF_HUB_OFFLINE=1
   export TRANSFORMERS_OFFLINE=1
   export HF_DATASETS_OFFLINE=1
+else
+  log "Local-only mode disabled; remote model resolution/downloads are allowed."
 fi
 
 VLLM_PID=""
+VLLM_LOG_TAIL_PID=""
 
 safe_model_dir_name() {
   local model_id="$1"
@@ -111,7 +126,9 @@ validate_local_model_path() {
 wait_for_vllm() {
   local timeout_seconds="$1"
   local start_ts
+  local next_log_after
   start_ts="$(date +%s)"
+  next_log_after=0
 
   while true; do
     if python3 - "$VLLM_PORT" <<'PY'
@@ -136,6 +153,11 @@ PY
 
     local now_ts
     now_ts="$(date +%s)"
+    local elapsed=$((now_ts - start_ts))
+    if (( elapsed >= next_log_after )); then
+      log "Waiting for vLLM readiness on port ${VLLM_PORT}: ${elapsed}s/${timeout_seconds}s elapsed."
+      next_log_after=$((elapsed + 30))
+    fi
     if (( now_ts - start_ts >= timeout_seconds )); then
       return 1
     fi
@@ -145,6 +167,13 @@ PY
 }
 
 stop_vllm() {
+  log "Stopping vLLM server."
+  if [[ -n "${VLLM_LOG_TAIL_PID}" ]] && kill -0 "${VLLM_LOG_TAIL_PID}" 2>/dev/null; then
+    kill "${VLLM_LOG_TAIL_PID}" || true
+    wait "${VLLM_LOG_TAIL_PID}" || true
+  fi
+  VLLM_LOG_TAIL_PID=""
+
   if [[ -n "${VLLM_PID}" ]] && kill -0 "${VLLM_PID}" 2>/dev/null; then
     kill "${VLLM_PID}" || true
     wait "${VLLM_PID}" || true
@@ -178,16 +207,33 @@ start_vllm() {
     cmd+=(--quantization "${quantization}")
   fi
 
-  echo "Starting vLLM server for model ${model_id}."
+  section "Start vLLM"
+  log "Model: ${model_id}"
+  log "Serve target: ${serve_target}"
+  log "Startup timeout: ${VLLM_STARTUP_TIMEOUT}s"
+  log "GPU memory utilization: ${VLLM_GPU_MEMORY_UTILIZATION}"
+  log "Max model length: ${VLLM_MAX_MODEL_LEN}"
+  log "dtype: ${VLLM_DTYPE}"
+  : > /tmp/vllm.log
   "${cmd[@]}" >/tmp/vllm.log 2>&1 &
   VLLM_PID="$!"
 
+  if [[ "${VLLM_STREAM_LOGS}" == "true" ]]; then
+    tail -n +1 -F /tmp/vllm.log &
+    VLLM_LOG_TAIL_PID="$!"
+  fi
+
   if wait_for_vllm "${VLLM_STARTUP_TIMEOUT}"; then
-    echo "vLLM server is ready for model ${model_id}."
+    if [[ -n "${VLLM_LOG_TAIL_PID}" ]] && kill -0 "${VLLM_LOG_TAIL_PID}" 2>/dev/null; then
+      kill "${VLLM_LOG_TAIL_PID}" || true
+      wait "${VLLM_LOG_TAIL_PID}" || true
+      VLLM_LOG_TAIL_PID=""
+    fi
+    log "vLLM server is ready for model ${model_id}."
     return 0
   fi
 
-  echo "vLLM server failed to become ready for model ${model_id}." >&2
+  log "vLLM server failed to become ready for model ${model_id}." >&2
   tail -n 80 /tmp/vllm.log || true
   stop_vllm
   return 1
@@ -204,10 +250,13 @@ run_model_round() {
   local model_arg_name
 
   active_model_path="$(resolve_model_path "${primary_model}" "${primary_model_path}")"
+  section "Run ${run_mode}"
+  log "Primary model: ${primary_model}"
+  log "Resolved local path: ${active_model_path}"
 
   if ! start_vllm "${primary_model}" "" "${active_model_path}"; then
     if [[ "${VLLM_PRECISION_POLICY}" == "auto" ]] && [[ -n "${fallback_model}" ]]; then
-      echo "Retrying with fallback model ${fallback_model} and quantization ${VLLM_FALLBACK_QUANTIZATION}."
+      log "Retrying with fallback model ${fallback_model} and quantization ${VLLM_FALLBACK_QUANTIZATION}."
       active_model="${fallback_model}"
       active_model_path="$(resolve_model_path "${fallback_model}" "${fallback_model_path}")"
       start_vllm "${fallback_model}" "${VLLM_FALLBACK_QUANTIZATION}" "${active_model_path}"
@@ -223,14 +272,22 @@ run_model_round() {
     model_arg_name="--model-2"
   fi
 
+  log "Starting paper evaluation for ${run_mode} with active model ${active_model}."
   VLLM_BASE_URL="${VLLM_BASE_URL}" python3 -m src.main --run-mode "${run_mode}" "${model_arg_name}" "${active_model}" ${RESUME_FLAG}
+  log "Paper evaluation completed for ${run_mode}."
   stop_vllm
 }
 
 trap stop_vllm EXIT
 
+section "Evaluation Pipeline"
+log "Input CSV: ${INPUT_CSV}"
+log "Rules JSON: ${RULES_JSON}"
+log "Output dir: ${OUTPUT_DIR}"
+log "Batch size: ${BATCH_SIZE:-20}"
 run_model_round "model1" "${MODEL_1}" "${MODEL_1_FALLBACK}" "${MODEL_1_PATH}" "${MODEL_1_FALLBACK_PATH}"
 run_model_round "model2" "${MODEL_2}" "${MODEL_2_FALLBACK}" "${MODEL_2_PATH}" "${MODEL_2_FALLBACK_PATH}"
+section "Merge Results"
 python3 -m src.main --run-mode merge-only
 
-echo "Sequential dual-model pipeline completed successfully."
+log "Sequential dual-model pipeline completed successfully."
