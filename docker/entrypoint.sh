@@ -151,6 +151,11 @@ PY
       return 0
     fi
 
+    if [[ -n "${VLLM_PID}" ]] && ! kill -0 "${VLLM_PID}" 2>/dev/null; then
+      log "vLLM process exited before the readiness endpoint became available."
+      return 1
+    fi
+
     local now_ts
     now_ts="$(date +%s)"
     local elapsed=$((now_ts - start_ts))
