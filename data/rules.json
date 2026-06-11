@@ -1,0 +1,64 @@
+{
+  "rules": [
+    {
+      "rule_id": "IC1",
+      "type": "inclusion",
+      "text": "Publications that describe the use of methodologies, approaches, principles, and practices of software engineering in AI or ML system development."
+    },
+    {
+      "rule_id": "IC2",
+      "type": "inclusion",
+      "text": "Publications that describe the use of methodologies, approaches, principles, and practices of software engineering for the development of AI or ML models."
+    },
+    {
+      "rule_id": "IC3",
+      "type": "inclusion",
+      "text": "Publications that describe an AI software that includes an ML component to perform intelligent functions and mention the use of software engineering methodologies, approaches, principles, and practices."
+    },
+    {
+      "rule_id": "IC4",
+      "type": "inclusion",
+      "text": "Publications that describe the definition of model development or experimental pipelines covering requirements engineering, data, training, and evaluation processes."
+    },
+    {
+      "rule_id": "EC1",
+      "type": "exclusion",
+      "text": "Publications that do not meet any of the inclusion criteria."
+    },
+    {
+      "rule_id": "EC2",
+      "type": "exclusion",
+      "text": "Publications in which the language is different from English or Portuguese."
+    },
+    {
+      "rule_id": "EC3",
+      "type": "exclusion",
+      "text": "Publications that are not available for reading or data collection (publications that are only accessible via payment or are not provided by the search engine)."
+    },
+    {
+      "rule_id": "EC4",
+      "type": "exclusion",
+      "text": "Duplicated publications."
+    },
+    {
+      "rule_id": "EC5",
+      "type": "exclusion",
+      "text": "Publications that focus on algorithmic aspects of AI/ML systems, but not engineering aspects."
+    },
+    {
+      "rule_id": "EC6",
+      "type": "exclusion",
+      "text": "Publications that theoretically discuss or propose practices or methods without empirical validation."
+    },
+    {
+      "rule_id": "EC7",
+      "type": "exclusion",
+      "text": "Publications about the use of AI/ML for improving software engineering practices."
+    },
+    {
+      "rule_id": "EC8",
+      "type": "exclusion",
+      "text": "Publications that are short papers that did not perform an empirical study."
+    }
+  ]
+}
